@@ -1,0 +1,14 @@
+.env
+.env.*
+**/.env
+**/.env.*
+
+.DS_Store
+__pycache__/
+*.pyc
+
+.cache/
+models/
+*.safetensors
+*.bin
+*.gguf
