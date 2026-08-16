@@ -21,6 +21,21 @@ echo "Local path: $MODEL_DIR"
 echo "vLLM port: $PORT"
 echo "Health port: $PORT_HEALTH"
 
+#
+# Start health server immediately.
+#
+# /ping returns:
+#   204 while vLLM is unavailable/initializing
+#   200 once vLLM is healthy
+#
+echo "Starting health server on port $PORT_HEALTH..."
+
+python /app/health_server.py &
+HEALTH_PID="$!"
+
+# Clean up health server if startup fails.
+trap 'kill "$HEALTH_PID" 2>/dev/null || true' EXIT
+
 mkdir -p "$MODEL_DIR"
 
 echo "Downloading model from S3..."
@@ -32,11 +47,6 @@ aws s3 sync \
 echo "Model download complete."
 
 echo "Starting vLLM..."
-
-python /app/health_server.py &
-HEALTH_PID="$!"
-
-trap 'kill "$HEALTH_PID" 2>/dev/null || true' EXIT
 
 exec vllm serve "$MODEL_DIR" \
     --served-model-name "$MODEL_NAME" \
