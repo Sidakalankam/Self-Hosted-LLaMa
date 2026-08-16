@@ -2,6 +2,7 @@ name: Build vLLM worker
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - main
@@ -34,5 +35,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:v2
             ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:v2
