@@ -33,4 +33,6 @@ jobs:
           file: ./vllm-worker/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:v1
+            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:latest
