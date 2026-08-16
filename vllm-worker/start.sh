@@ -3,12 +3,13 @@ set -e
 
 echo "=== vLLM Worker Starting ==="
 
-# Required environment variables
 : "${MODEL_NAME:?MODEL_NAME is required}"
 : "${MODEL_BUCKET:?MODEL_BUCKET is required}"
 
 MODEL_PREFIX="${MODEL_PREFIX:-models/$MODEL_NAME}"
-MODEL_DIR="/models/$MODEL_NAME"
+
+# Persistent Runpod network volume
+MODEL_DIR="/runpod-volume/models/$MODEL_NAME"
 
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
@@ -16,35 +17,34 @@ PORT="${PORT:-8000}"
 PORT_HEALTH="${PORT_HEALTH:-8001}"
 
 echo "Model: $MODEL_NAME"
-echo "S3: s3://$MODEL_BUCKET/$MODEL_PREFIX"
-echo "Local path: $MODEL_DIR"
+echo "S3 source: s3://$MODEL_BUCKET/$MODEL_PREFIX"
+echo "Persistent model path: $MODEL_DIR"
 echo "vLLM port: $PORT"
 echo "Health port: $PORT_HEALTH"
 
-#
 # Start health server immediately.
-#
-# /ping returns:
-#   204 while vLLM is unavailable/initializing
-#   200 once vLLM is healthy
-#
-echo "Starting health server on port $PORT_HEALTH..."
-
 python /app/health_server.py &
 HEALTH_PID="$!"
 
-# Clean up health server if startup fails.
 trap 'kill "$HEALTH_PID" 2>/dev/null || true' EXIT
 
 mkdir -p "$MODEL_DIR"
 
-echo "Downloading model from S3..."
+# Only download if model isn't already cached.
+if [ ! -f "$MODEL_DIR/config.json" ]; then
+    echo "Model not found on network volume."
+    echo "Downloading model from S3..."
 
-aws s3 sync \
-    "s3://$MODEL_BUCKET/$MODEL_PREFIX/" \
-    "$MODEL_DIR/"
+    aws s3 sync \
+        "s3://$MODEL_BUCKET/$MODEL_PREFIX/" \
+        "$MODEL_DIR/"
 
-echo "Model download complete."
+    echo "Model download complete."
+    echo "Model is now cached at $MODEL_DIR."
+else
+    echo "Model already exists on network volume."
+    echo "Skipping S3 download."
+fi
 
 echo "Starting vLLM..."
 
