@@ -15,6 +15,7 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
     rm -rf /tmp/aws /tmp/awscliv2.zip
 
 COPY start.sh /app/start.sh
+COPY health_server.py /app/health_server.py
 
 RUN chmod +x /app/start.sh
 

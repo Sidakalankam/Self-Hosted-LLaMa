@@ -12,10 +12,14 @@ MODEL_DIR="/models/$MODEL_NAME"
 
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
+PORT="${PORT:-8000}"
+PORT_HEALTH="${PORT_HEALTH:-8001}"
 
 echo "Model: $MODEL_NAME"
 echo "S3: s3://$MODEL_BUCKET/$MODEL_PREFIX"
 echo "Local path: $MODEL_DIR"
+echo "vLLM port: $PORT"
+echo "Health port: $PORT_HEALTH"
 
 mkdir -p "$MODEL_DIR"
 
@@ -29,8 +33,15 @@ echo "Model download complete."
 
 echo "Starting vLLM..."
 
+python /app/health_server.py &
+HEALTH_PID="$!"
+
+trap 'kill "$HEALTH_PID" 2>/dev/null || true' EXIT
+
 exec vllm serve "$MODEL_DIR" \
     --served-model-name "$MODEL_NAME" \
     --dtype auto \
     --max-model-len "$MAX_MODEL_LEN" \
-    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
+    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
+    --host 0.0.0.0 \
+    --port "$PORT"
