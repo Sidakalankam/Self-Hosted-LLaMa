@@ -36,4 +36,4 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:v2
+            ${{ secrets.DOCKERHUB_USERNAME }}/self-hosted-llama-vllm-worker:v3
