@@ -33,7 +33,7 @@ resource "aws_security_group" "llama_server" {
   name        = "llama-vllm-sg"
   description = "Security group for the Llama vLLM server"
 
-  # Allow SSH only from our public IPv4 address
+  # SSH
   ingress {
     description = "SSH from my IP"
     from_port   = 22
@@ -42,7 +42,7 @@ resource "aws_security_group" "llama_server" {
     cidr_blocks = ["${var.allowed_ip}/32"]
   }
 
-  # Allow access to the vLLM API only from our public IPv4 address
+  # vLLM OpenAI-compatible API
   ingress {
     description = "vLLM API from my IP"
     from_port   = 8000
@@ -51,7 +51,16 @@ resource "aws_security_group" "llama_server" {
     cidr_blocks = ["${var.allowed_ip}/32"]
   }
 
-  # Allow EC2 to access the internet
+  # Grafana dashboard
+  ingress {
+    description = "Grafana from my IP"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["${var.allowed_ip}/32"]
+  }
+
+  # Allow the EC2 instance to make outbound connections
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0
@@ -81,6 +90,9 @@ resource "aws_instance" "llama_server" {
 
   iam_instance_profile = aws_iam_instance_profile.llama_server.name
 
+  # Require IMDSv2.
+  # Hop limit 2 allows containers on the instance to access
+  # credentials supplied through the EC2 instance role.
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 2
