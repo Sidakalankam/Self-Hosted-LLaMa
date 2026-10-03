@@ -1,29 +1,8 @@
 services:
-  vllm-worker:
-    image: sidakalankam1103/self-hosted-llama-vllm-worker:v2
-    container_name: vllm-worker
-
-    environment:
-      MODEL_NAME: llama-3.1-8b-instruct
-      MODEL_BUCKET: personal-llm-registry
-
-    volumes:
-      - /mnt/models:/models
-
-    ports:
-      - "8000:8000"
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
   prometheus:
     image: prom/prometheus
     container_name: prometheus
+    restart: unless-stopped
 
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -32,12 +11,10 @@ services:
     ports:
       - "9090:9090"
 
-    depends_on:
-      - vllm-worker
-
   grafana:
     image: grafana/grafana
     container_name: grafana
+    restart: unless-stopped
 
     ports:
       - "3000:3000"
@@ -48,7 +25,6 @@ services:
 
     depends_on:
       - prometheus
-
 
 volumes:
   prometheus_data:

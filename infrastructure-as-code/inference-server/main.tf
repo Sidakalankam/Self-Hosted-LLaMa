@@ -16,6 +16,18 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# Find the monitoring server security group
+data "aws_security_group" "monitoring" {
+  filter {
+    name   = "group-name"
+    values = ["llama-monitoring-sg"]
+  }
+
+  filter {
+    name   = "vpc-id"
+    values = ["vpc-09191a25275821b08"]
+  }
+}
 
 # Register our existing Mac SSH public key with AWS
 resource "aws_key_pair" "llama_server" {
@@ -51,13 +63,13 @@ resource "aws_security_group" "llama_server" {
     cidr_blocks = ["${var.allowed_ip}/32"]
   }
 
-  # Grafana dashboard
+  # Prometheus on the monitoring EC2
   ingress {
-    description = "Grafana from my IP"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["${var.allowed_ip}/32"]
+    description     = "vLLM metrics from monitoring server"
+    from_port       = 8000
+    to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [data.aws_security_group.monitoring.id]
   }
 
   # Allow the EC2 instance to make outbound connections
