@@ -1,7 +1,6 @@
 services:
   vllm-worker:
     image: sidakalankam1103/self-hosted-llama-vllm-worker:v2
-
     container_name: vllm-worker
 
     environment:
@@ -24,11 +23,11 @@ services:
 
   prometheus:
     image: prom/prometheus
-
     container_name: prometheus
 
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
 
     ports:
       - "9090:9090"
@@ -38,7 +37,6 @@ services:
 
   grafana:
     image: grafana/grafana
-
     container_name: grafana
 
     ports:
@@ -46,6 +44,15 @@ services:
 
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
 
     depends_on:
       - prometheus
+
+
+volumes:
+  prometheus_data:
+    name: prometheus_data
+
+  grafana_data:
+    name: grafana_data

@@ -109,3 +109,19 @@ resource "aws_instance" "llama_server" {
     Name = "llama-vllm-server"
   }
 }
+
+# Allocate a static public IPv4 address
+resource "aws_eip" "llama_server" {
+  domain = "vpc"
+
+  tags = {
+    Name = "llama-vllm-eip"
+  }
+}
+
+
+# Associate the Elastic IP with the Llama EC2 instance
+resource "aws_eip_association" "llama_server" {
+  instance_id   = aws_instance.llama_server.id
+  allocation_id = aws_eip.llama_server.id
+}
