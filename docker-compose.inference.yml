@@ -5,23 +5,20 @@ services:
     restart: unless-stopped
 
     environment:
-      # Model registry configuration
       MODEL_NAME: qwen3-30b-a3b-instruct-2507-gptq-int4
-      MODEL_BUCKET: personal-llm-registry
+
+      # Model source: local or s3
+      MODEL_SOURCE: local
 
       # vLLM configuration
       MAX_MODEL_LEN: 4096
       GPU_MEMORY_UTILIZATION: 0.90
       DTYPE: auto
 
-      # Optional.
-      # Leave empty to let vLLM detect quantization from config.json.
+      # Empty = let vLLM auto-detect from model config
       QUANTIZATION: ""
 
-      # Server configuration
       PORT: 8000
-
-      # Persistent model storage
       MODEL_ROOT: /models
 
     volumes:

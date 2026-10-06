@@ -7,20 +7,21 @@ echo "=== vLLM Worker Starting ==============="
 echo "========================================"
 
 #
-# Required environment variables
+# Required configuration
 #
 
 : "${MODEL_NAME:?MODEL_NAME is required}"
-: "${MODEL_BUCKET:?MODEL_BUCKET is required}"
 
 #
-# Optional model registry configuration
+# Model source configuration
 #
 
-MODEL_PREFIX="${MODEL_PREFIX:-models/$MODEL_NAME}"
+MODEL_SOURCE="${MODEL_SOURCE:-local}"
+MODEL_ROOT="${MODEL_ROOT:-/models}"
+MODEL_DIR="$MODEL_ROOT/$MODEL_NAME"
 
 #
-# Optional vLLM configuration
+# vLLM configuration
 #
 
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
@@ -34,23 +35,10 @@ QUANTIZATION="${QUANTIZATION:-}"
 
 PORT="${PORT:-8000}"
 
-#
-# Persistent model storage
-#
-# Infrastructure should mount persistent storage here.
-#
-# Examples:
-#   EC2 + EBS:              /models
-#   RunPod network volume:  /runpod-volume/models
-#
-
-MODEL_ROOT="${MODEL_ROOT:-/models}"
-MODEL_DIR="$MODEL_ROOT/$MODEL_NAME"
-
 echo ""
 echo "Configuration:"
 echo "  Model:          $MODEL_NAME"
-echo "  S3 source:      s3://$MODEL_BUCKET/$MODEL_PREFIX"
+echo "  Model source:   $MODEL_SOURCE"
 echo "  Model root:     $MODEL_ROOT"
 echo "  Model path:     $MODEL_DIR"
 echo "  Port:           $PORT"
@@ -67,47 +55,67 @@ fi
 echo ""
 
 #
-# Verify persistent storage exists.
+# Verify persistent model storage exists.
 #
 
 if [ ! -d "$MODEL_ROOT" ]; then
     echo "ERROR: Model storage root '$MODEL_ROOT' does not exist."
-    echo "Make sure persistent storage is mounted into the container."
     exit 1
 fi
 
-mkdir -p "$MODEL_DIR"
-
 #
-# Synchronize model from S3.
-#
-# This runs on every worker startup.
-#
-# If the model is already cached on persistent storage,
-# AWS CLI compares the files and avoids downloading
-# unchanged files.
-#
-# If a previous worker stopped during download,
-# sync downloads missing or changed files.
+# Handle model source.
 #
 
-echo "Synchronizing model from S3..."
-echo ""
+case "$MODEL_SOURCE" in
 
-aws s3 sync \
-    "s3://$MODEL_BUCKET/$MODEL_PREFIX/" \
-    "$MODEL_DIR/" \
-    --only-show-errors
+    local)
+        echo "Using local model."
 
-echo ""
-echo "S3 synchronization complete."
+        if [ ! -d "$MODEL_DIR" ]; then
+            echo "ERROR: Local model directory does not exist:"
+            echo "  $MODEL_DIR"
+            exit 1
+        fi
+        ;;
+
+    s3)
+        : "${MODEL_BUCKET:?MODEL_BUCKET is required when MODEL_SOURCE=s3}"
+
+        MODEL_PREFIX="${MODEL_PREFIX:-models/$MODEL_NAME}"
+
+        echo "Synchronizing model from:"
+        echo "  s3://$MODEL_BUCKET/$MODEL_PREFIX"
+        echo ""
+
+        mkdir -p "$MODEL_DIR"
+
+        aws s3 sync \
+            "s3://$MODEL_BUCKET/$MODEL_PREFIX/" \
+            "$MODEL_DIR/" \
+            --only-show-errors
+
+        echo ""
+        echo "S3 synchronization complete."
+        ;;
+
+    *)
+        echo "ERROR: Unsupported MODEL_SOURCE: $MODEL_SOURCE"
+        echo "Supported values:"
+        echo "  local"
+        echo "  s3"
+        exit 1
+        ;;
+
+esac
 
 #
-# Basic sanity checks.
+# Basic model sanity checks.
 #
 
 if [ ! -f "$MODEL_DIR/config.json" ]; then
-    echo "ERROR: config.json does not exist after S3 sync."
+    echo "ERROR: config.json does not exist:"
+    echo "  $MODEL_DIR/config.json"
     exit 1
 fi
 
@@ -116,7 +124,7 @@ if [ ! -f "$MODEL_DIR/tokenizer_config.json" ]; then
 fi
 
 #
-# Verify sharded safetensors files before vLLM starts.
+# Verify sharded safetensors.
 #
 
 SAFETENSORS_INDEX="$MODEL_DIR/model.safetensors.index.json"
@@ -132,8 +140,8 @@ from pathlib import Path
 index_path = Path(sys.argv[1])
 model_dir = Path(sys.argv[2])
 
-with index_path.open("r", encoding="utf-8") as index_file:
-    index = json.load(index_file)
+with index_path.open("r", encoding="utf-8") as f:
+    index = json.load(f)
 
 weight_map = index.get("weight_map")
 
@@ -153,10 +161,7 @@ missing_files = [
 ]
 
 if missing_files:
-    print(
-        "ERROR: model.safetensors.index.json references "
-        "missing shard files:"
-    )
+    print("ERROR: Missing safetensors shards:")
 
     for filename in missing_files:
         print(f"  {filename}")
@@ -171,7 +176,7 @@ PY
 fi
 
 #
-# Print available model weight files.
+# Display model weights.
 #
 
 echo ""
@@ -185,7 +190,7 @@ find "$MODEL_DIR" \
     2>/dev/null || true
 
 #
-# Construct vLLM arguments.
+# Construct vLLM command.
 #
 
 VLLM_ARGS=(
@@ -199,10 +204,7 @@ VLLM_ARGS=(
 )
 
 #
-# Quantization is optional.
-#
-# If omitted, vLLM will attempt to detect the quantization
-# configuration from the model metadata.
+# Optional explicit quantization override.
 #
 
 if [ -n "$QUANTIZATION" ]; then
@@ -214,12 +216,5 @@ fi
 echo ""
 echo "Starting vLLM..."
 echo ""
-
-#
-# Replace this shell process with vLLM.
-#
-# This makes vLLM PID 1 so it receives container
-# shutdown signals directly.
-#
 
 exec vllm serve "${VLLM_ARGS[@]}"
