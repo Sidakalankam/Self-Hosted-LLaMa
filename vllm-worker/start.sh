@@ -14,39 +14,60 @@ echo "========================================"
 : "${MODEL_BUCKET:?MODEL_BUCKET is required}"
 
 #
-# Optional configuration
+# Optional model registry configuration
 #
 
 MODEL_PREFIX="${MODEL_PREFIX:-models/$MODEL_NAME}"
 
+#
+# Optional vLLM configuration
+#
+
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
+DTYPE="${DTYPE:-auto}"
+QUANTIZATION="${QUANTIZATION:-}"
+
+#
+# Server configuration
+#
 
 PORT="${PORT:-8000}"
 
-# Persistent storage location inside the container.
+#
+# Persistent model storage
+#
 # Infrastructure should mount persistent storage here.
 #
 # Examples:
 #   EC2 + EBS:              /models
 #   RunPod network volume:  /runpod-volume/models
 #
+
 MODEL_ROOT="${MODEL_ROOT:-/models}"
 MODEL_DIR="$MODEL_ROOT/$MODEL_NAME"
 
 echo ""
 echo "Configuration:"
-echo "  Model:        $MODEL_NAME"
-echo "  S3 source:    s3://$MODEL_BUCKET/$MODEL_PREFIX"
-echo "  Model root:   $MODEL_ROOT"
-echo "  Model path:   $MODEL_DIR"
-echo "  Port:         $PORT"
-echo "  Max context:  $MAX_MODEL_LEN"
-echo "  GPU memory:   $GPU_MEMORY_UTILIZATION"
+echo "  Model:          $MODEL_NAME"
+echo "  S3 source:      s3://$MODEL_BUCKET/$MODEL_PREFIX"
+echo "  Model root:     $MODEL_ROOT"
+echo "  Model path:     $MODEL_DIR"
+echo "  Port:           $PORT"
+echo "  Max context:    $MAX_MODEL_LEN"
+echo "  GPU memory:     $GPU_MEMORY_UTILIZATION"
+echo "  Dtype:          $DTYPE"
+
+if [ -n "$QUANTIZATION" ]; then
+    echo "  Quantization:   $QUANTIZATION"
+else
+    echo "  Quantization:   auto-detect"
+fi
+
 echo ""
 
 #
-# Verify the persistent storage location exists.
+# Verify persistent storage exists.
 #
 
 if [ ! -d "$MODEL_ROOT" ]; then
@@ -62,11 +83,12 @@ mkdir -p "$MODEL_DIR"
 #
 # This runs on every worker startup.
 #
-# If the model is already cached on persistent storage, AWS CLI will
-# compare the files and avoid downloading unchanged files again.
+# If the model is already cached on persistent storage,
+# AWS CLI compares the files and avoids downloading
+# unchanged files.
 #
-# If a previous worker stopped during the download, sync will download
-# missing or changed files.
+# If a previous worker stopped during download,
+# sync downloads missing or changed files.
 #
 
 echo "Synchronizing model from S3..."
@@ -116,7 +138,10 @@ with index_path.open("r", encoding="utf-8") as index_file:
 weight_map = index.get("weight_map")
 
 if not isinstance(weight_map, dict):
-    print(f"ERROR: {index_path.name} does not contain a valid weight_map.")
+    print(
+        f"ERROR: {index_path.name} does not contain "
+        "a valid weight_map."
+    )
     sys.exit(1)
 
 expected_files = sorted(set(weight_map.values()))
@@ -128,19 +153,25 @@ missing_files = [
 ]
 
 if missing_files:
-    print("ERROR: model.safetensors.index.json references missing shard files:")
+    print(
+        "ERROR: model.safetensors.index.json references "
+        "missing shard files:"
+    )
 
     for filename in missing_files:
         print(f"  {filename}")
 
     sys.exit(1)
 
-print(f"Validated {len(expected_files)} safetensors shard file(s).")
+print(
+    f"Validated {len(expected_files)} "
+    "safetensors shard file(s)."
+)
 PY
 fi
 
 #
-# Print the model weight files that are available.
+# Print available model weight files.
 #
 
 echo ""
@@ -153,6 +184,33 @@ find "$MODEL_DIR" \
     -printf "  %f\n" \
     2>/dev/null || true
 
+#
+# Construct vLLM arguments.
+#
+
+VLLM_ARGS=(
+    "$MODEL_DIR"
+    --served-model-name "$MODEL_NAME"
+    --dtype "$DTYPE"
+    --max-model-len "$MAX_MODEL_LEN"
+    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
+    --host 0.0.0.0
+    --port "$PORT"
+)
+
+#
+# Quantization is optional.
+#
+# If omitted, vLLM will attempt to detect the quantization
+# configuration from the model metadata.
+#
+
+if [ -n "$QUANTIZATION" ]; then
+    VLLM_ARGS+=(
+        --quantization "$QUANTIZATION"
+    )
+fi
+
 echo ""
 echo "Starting vLLM..."
 echo ""
@@ -160,14 +218,8 @@ echo ""
 #
 # Replace this shell process with vLLM.
 #
-# This makes vLLM PID 1 so that it receives container shutdown
-# signals directly.
+# This makes vLLM PID 1 so it receives container
+# shutdown signals directly.
 #
 
-exec vllm serve "$MODEL_DIR" \
-    --served-model-name "$MODEL_NAME" \
-    --dtype auto \
-    --max-model-len "$MAX_MODEL_LEN" \
-    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
-    --host 0.0.0.0 \
-    --port "$PORT"
+exec vllm serve "${VLLM_ARGS[@]}"
